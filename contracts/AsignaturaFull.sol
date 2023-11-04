@@ -1,10 +1,23 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.16;
 
-
-
-
+/*
+ *
+ * @title Contract AsignaturaFull - BDCA - MUIRST 2324
+ *
+ * Authors:
+ * - Carlos Aparicio
+ * - Enzo Banchon
+ * - Paulina Bravo
+ *
+ */
 contract AsignaturaFull {
+    // Enums and Structs
+    enum TipoNota {
+        Empty,
+        NP,
+        Normal
+    }
     struct DatosAlumno {
         string nombre;
         string email;
@@ -16,32 +29,40 @@ contract AsignaturaFull {
         uint porcentaje;
         uint nota_minima;
     }
-    enum TipoNota {
-        Empty,
-        NP,
-        Normal
-    }
     struct Nota {
         TipoNota tipo;
         uint calificacion;
     }
 
-    string public version = "2022 Lite";
+    // simple attrs
+    string public version = "2023 Full";
     string public nombre;
     string public curso;
     bool public cerrada;
 
+    // addresses
     address public immutable owner;
     address public profesor;
     address public coordinador;
+
+    // arrays
     address[] public profesores;
     address[] public matriculas;
-
     Evaluacion[] public evaluaciones;
+
+    // mappings
     mapping(address => DatosAlumno) public datosAlumno;
     mapping(address => string) public datosProfesor;
     mapping(address => mapping(uint => Nota)) public calificaciones;
 
+    /**
+     *
+     * constructor
+     * @dev Deploy contract
+     * @param _nombre   {string memory} Asignatura name
+     * @param _curso    {string memory} Curso académico
+     *
+     */
     constructor(string memory _nombre, string memory _curso) {
         require(
             bytes(_nombre).length != 0,
@@ -58,43 +79,170 @@ contract AsignaturaFull {
         owner = msg.sender;
     }
 
-    function setCoordinador(address coordinador_) external soloOwner soloAbierta {
-        require(
-            coordinador_ != address(0),
-            "tiene que haber un address correcto"
-        );
-        coordinador = coordinador_;
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // GENERIC METHODS
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    /**
+     *
+     * compareStrings
+     * @dev pure function to compare string memory vars equality
+     * @param _a {string memory}
+     * @param _b {string memory}
+     *
+     */
+    function compareStrings(
+        string memory _a,
+        string memory _b
+    ) private pure returns (bool) {
+        return (keccak256(abi.encodePacked(_a)) ==
+            keccak256(abi.encodePacked(_b)));
     }
 
-    function automatricula(
-        string memory _nombre,
-        string memory _dni,
-        string memory _email
-    ) public soloNoMatriculados soloAbierta {
-        require(bytes(_nombre).length != 0, "El nombre no puede ser vacio");
-        require(bytes(_dni).length != 0, "El DNI no puede ser vacio");
-        if (doesAlumnoDNIExists(_dni)) {
-            revert DNI_Already_Exists(_dni); 
-        }
-
-        DatosAlumno memory datos = DatosAlumno(_nombre, _email, _dni);
-        datosAlumno[msg.sender] = datos;
-        matriculas.push(msg.sender);
-    }
-
+    /**
+     *
+     * doesAlumnoDNIExists
+     * @dev view function to handle whether a alumno's dni is already saved
+     * @param _dni {string memory} Coordinador address
+     *
+     */
     function doesAlumnoDNIExists(
         string memory _dni
-    ) private view returns (bool) {
-        bool boolOut = false;
+    ) private view returns (bool boolOut) {
+        boolOut = false;
         for (uint i = 0; i < matriculas.length; i++) {
             if (compareStrings(datosAlumno[matriculas[i]].dni, _dni)) {
                 boolOut = true;
                 break;
             }
         }
-        return boolOut;
     }
 
+    /**
+     *
+     * estaMatriculado
+     * @dev checks whether a alumno, identified by address, is matriculado
+     * @param _alumno {address} alumno address
+     *
+     */
+    function estaMatriculado(address _alumno) private view returns (bool) {
+        string memory _nombre = datosAlumno[_alumno].nombre;
+        return bytes(_nombre).length != 0;
+    }
+
+    /**
+     *
+     * cerrar
+     * @dev cierra la asignatura
+     *
+     */
+    function cerrar() external soloCoordinador {
+        cerrada = true;
+    }
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // COORDINADOR
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    /**
+     *
+     * setCoordinador
+     * @dev Set address to coordinador
+     * @param _coordinador {address} Coordinador address
+     *
+     */
+    function setCoordinador(
+        address _coordinador
+    ) external soloOwner soloAbierta {
+        require(
+            _coordinador != address(0),
+            unicode"La direccion del coordinador parece que no es correcta"
+        );
+        coordinador = _coordinador;
+    }
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // PROFESOR
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    /**
+     *
+     * addProfesor
+     * @dev Create a new profesor
+     * @param _profesor_address {address}       Dirección del profesor
+     * @param _name             {string memory} Nombre del profesor
+     *
+     */
+    function addProfesor(
+        address _profesor_address,
+        string memory _name
+    ) external soloOwner soloAbierta {
+        require(
+            bytes(_name).length > 0,
+            unicode"El nombre del profesor no puede estar vacío"
+        );
+        require(
+            bytes(datosProfesor[_profesor_address]).length > 0,
+            unicode"El profesor ya existe"
+        );
+
+        datosProfesor[_profesor_address] = _name;
+        profesores.push(_profesor_address);
+    }
+
+    /**
+     *
+     * matriculasLength
+     * @dev getter de tamaño de array de profesores
+     *
+     * @return (uint)
+     *
+     */
+    function profesoresLength() public view returns (uint) {
+        return profesores.length;
+    }
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // MATRICULAS
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    /**
+     *
+     * automatricula
+     * @dev El alumno se puede matricular
+     *
+     * @param _nombre   {string memory} Nombre de alumno
+     * @param _dni      {string memory} Dni de alumno
+     * @param _email    {string memory} Email de alumno
+     *
+     */
+    function automatricula(
+        string memory _nombre,
+        string memory _dni,
+        string memory _email
+    ) public soloNoMatriculados soloAbierta {
+        matricular(msg.sender, _nombre, _dni, _email);
+    }
+
+    /**
+     *
+     * matricular
+     * @dev El propietario puede matricular a alumnos
+     *
+     * @param _address  {address}       Dirección de alumno
+     * @param _nombre   {string memory} Nombre de alumno
+     * @param _dni      {string memory} Dni de alumno
+     * @param _email    {string memory} Email de alumno
+     *
+     */
     function matricular(
         address _address,
         string memory _nombre,
@@ -110,18 +258,27 @@ contract AsignaturaFull {
         matriculas.push(_address);
     }
 
-    function compareStrings(
-        string memory a,
-        string memory b
-    ) public pure returns (bool) {
-        return (keccak256(abi.encodePacked(a)) ==
-            keccak256(abi.encodePacked(b)));
-    }
-
+    /**
+     *
+     * matriculasLength
+     * @dev getter de tamaño de array de matrículas
+     *
+     * @return (uint)
+     *
+     */
     function matriculasLength() public view returns (uint) {
         return matriculas.length;
     }
 
+    /**
+     *
+     * quienSoy
+     * @dev retorna el nombre e email de una persona matriculada
+     *
+     * @return _nombre  {string memory}
+     * @return _email   {string memory}
+     *
+     */
     function quienSoy()
         public
         view
@@ -133,10 +290,25 @@ contract AsignaturaFull {
         _email = datos.email;
     }
 
-    function profesoresLength() public view returns (uint) {
-        return profesores.length;
-    }
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // EVALUACIÓN
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    /**
+     *
+     * creaEvaluacion
+     * @dev crea una nueva evaluación para la asignatura
+     *
+     * @param _nombre       {string memory}
+     * @param _fecha        {uint}
+     * @param _porcentaje   {uint}
+     * @param _nota_minima  {uint}
+     *
+     * @return indice       {uint}
+     *
+     */
     function creaEvaluacion(
         string memory _nombre,
         uint _fecha,
@@ -145,7 +317,7 @@ contract AsignaturaFull {
     ) public soloCoordinador soloAbierta returns (uint) {
         require(
             bytes(_nombre).length != 0,
-            "El nombre de la evaluacion no puede ser vacio"
+            unicode"El nombre de la evaluacion no puede ser vacio"
         );
         require(
             _porcentaje > 100,
@@ -162,42 +334,92 @@ contract AsignaturaFull {
         return evaluaciones.length;
     }
 
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // CALIFICACIONES x EVALUACION
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    /**
+     *
+     * califica
+     * @dev califica un alumno en una evaluación
+     *
+     * @param _alumno       {address}
+     * @param _evaluacion   {uint}
+     * @param _tipo         {TipoNota}
+     * @param _calificacion {uint}
+     *
+     */
     function califica(
-        address alumno,
-        uint evaluacion,
-        TipoNota tipo,
-        uint calificacion
+        address _alumno,
+        uint _evaluacion,
+        TipoNota _tipo,
+        uint _calificacion
     ) public soloProfesor soloAbierta {
         require(
-            estaMatriculado(alumno),
+            estaMatriculado(_alumno),
             "Solo se pueden calificar a un alumno matriculado."
         );
         require(
-            evaluacion < evaluaciones.length,
+            _evaluacion < evaluaciones.length,
             "No se puede calificar una evaluacion que no existe."
         );
         require(
-            calificacion <= 1000,
+            _calificacion <= 1000,
             "No se puede calificar con una nota superior a la maxima permitida."
         );
 
-        Nota memory nota = Nota(tipo, calificacion);
-        calificaciones[alumno][evaluacion] = nota;
+        Nota memory nota = Nota(_tipo, _calificacion);
+        calificaciones[_alumno][_evaluacion] = nota;
     }
 
+    /**
+     *
+     * miNota
+     * @dev se consulta una calificación en una evaluación por alumno
+     *
+     * @param _evaluacion   {uint}
+     *
+     * @return _tipo         {TipoNota}
+     * @return _calificacion {uint}
+     *
+     */
     function miNota(
-        uint evaluacion
-    ) public view soloMatriculados returns (TipoNota tipo, uint calificacion) {
+        uint _evaluacion
+    )
+        public
+        view
+        soloMatriculados
+        returns (TipoNota _tipo, uint _calificacion)
+    {
         require(
-            evaluacion < evaluaciones.length,
+            _evaluacion < evaluaciones.length,
             "El indice de la evaluacion no existe."
         );
 
-        Nota memory nota = calificaciones[msg.sender][evaluacion];
-        tipo = nota.tipo;
-        calificacion = nota.calificacion;
+        Nota memory nota = calificaciones[msg.sender][_evaluacion];
+        _tipo = nota.tipo;
+        _calificacion = nota.calificacion;
     }
 
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // NOTAS FINALES
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    /**
+     *
+     * notaFinal
+     * @dev se calcula la nota final de un alumno sabiendo su dirección
+     *
+     * @param _address   {address}
+     *
+     * @return tipo_nota         {TipoNota}
+     * @return nota_final {uint}
+     *
+     */
     function notaFinal(
         address _address
     )
@@ -242,6 +464,16 @@ contract AsignaturaFull {
         }
     }
 
+    /**
+     *
+     * miNotaFinal
+     * @dev se calcula la nota final de un alumno sabiendo su dirección
+     *
+     *
+     * @return tipo_nota         {TipoNota}
+     * @return nota_final {uint}
+     *
+     */
     function miNotaFinal()
         public
         view
@@ -251,32 +483,11 @@ contract AsignaturaFull {
         (tipo_nota, nota_final) = notaFinal(msg.sender);
     }
 
-    function estaMatriculado(address alumno) private view returns (bool) {
-        string memory _nombre = datosAlumno[alumno].nombre;
-
-        return bytes(_nombre).length != 0;
-    }
-
-    function cerrar() external soloCoordinador {
-        cerrada = true;
-    }
-
-    function addProfesor(
-        address profesor_address_,
-        string memory name_
-    ) external soloOwner soloAbierta {
-        require(
-            bytes(name_).length > 0,
-            unicode"El nombre del profesor no puede estar vacío"
-        );
-        require(
-            bytes(datosProfesor[profesor_address_]).length > 0,
-            unicode"El profesor ya existe"
-        );
-
-        datosProfesor[profesor_address_] = name_;
-        profesores.push(profesor_address_);
-    }
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // MODIFIERS
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     modifier soloOwner() {
         require(msg.sender == owner, "Solo permitido al propietario");
@@ -310,14 +521,23 @@ contract AsignaturaFull {
     }
 
     modifier soloAbierta() {
-        require(
-            !cerrada,
-            unicode"Las asignatura está cerrada"
-        );
+        require(!cerrada, unicode"Las asignatura está cerrada");
         _;
     }
 
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // CUSTOM ERRORS
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
     error DNI_Already_Exists(string dni);
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // RECEIVE Y FALLBACK
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     receive() external payable {
         revert("No se permite la recepcion de dinero.");
