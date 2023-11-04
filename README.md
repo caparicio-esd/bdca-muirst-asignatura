@@ -37,10 +37,10 @@
 - [x] Si el tipo de nota de alguna de las calificaciones es empty, se retorna en general (Empty, 0)
 - [x] Si todas las calificaciones son de tipo NP, se retorna NP, 0
 - [x] Si la nota final es superior a 499, pero alguna calificación es NP, se retorna 499
-- [ ] creamos modificador soloOwner para que los métodos setCoordinador, addProfesor y matricular solo pueda ejecutarlas el owner
-- [ ] creamos modificador soloCoordinador para que notaFinal, cerrar y creaEvaluación solo pueda el coordinador
-- [ ] soloProfesor para califica
-- [ ] soloMatriculados para quienSoy, miNota y miNotaFinal
-- [ ] soloNoMatriculador para que automatricula solo pueda ejecturla alguien que no está matriculado
-- [ ] soloAbierta para que setCoordinador, addProfesor, automatricula, creaEvaluación y califica puedan ejecutarse si cerrada == false
-- [ ] Crear un error personalizadocuando se intenta matricular un alumno con un dni existente, usarlo en método automatrícula
+- [x] creamos modificador soloOwner para que los métodos setCoordinador, addProfesor y matricular solo pueda ejecutarlas el owner
+- [x] creamos modificador soloCoordinador para que notaFinal, cerrar y creaEvaluación solo pueda el coordinador
+- [x] soloProfesor para califica
+- [x] soloMatriculados para quienSoy, miNota y miNotaFinal
+- [x] soloNoMatriculador para que automatricula solo pueda ejecturla alguien que no está matriculado
+- [x] soloAbierta para que setCoordinador, addProfesor, automatricula, creaEvaluación y califica puedan ejecutarse si cerrada == false
+- [x] Crear un error personalizadocuando se intenta matricular un alumno con un dni existente, usarlo en método automatrícula

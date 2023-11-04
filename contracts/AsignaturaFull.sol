@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.16;
 
+
+
+
 contract AsignaturaFull {
     struct DatosAlumno {
         string nombre;
@@ -55,7 +58,7 @@ contract AsignaturaFull {
         owner = msg.sender;
     }
 
-    function setCoordinador(address coordinador_) external {
+    function setCoordinador(address coordinador_) external soloOwner soloAbierta {
         require(
             coordinador_ != address(0),
             "tiene que haber un address correcto"
@@ -67,10 +70,12 @@ contract AsignaturaFull {
         string memory _nombre,
         string memory _dni,
         string memory _email
-    ) public soloNoMatriculados estaCerrada {
+    ) public soloNoMatriculados soloAbierta {
         require(bytes(_nombre).length != 0, "El nombre no puede ser vacio");
         require(bytes(_dni).length != 0, "El DNI no puede ser vacio");
-        require(doesAlumnoDNIExists(_dni), "Ya hay alguien con ese DNI");
+        if (doesAlumnoDNIExists(_dni)) {
+            revert DNI_Already_Exists(_dni); 
+        }
 
         DatosAlumno memory datos = DatosAlumno(_nombre, _email, _dni);
         datosAlumno[msg.sender] = datos;
@@ -95,7 +100,7 @@ contract AsignaturaFull {
         string memory _nombre,
         string memory _dni,
         string memory _email
-    ) public {
+    ) public soloOwner soloAbierta {
         require(bytes(_nombre).length != 0, "El nombre no puede ser vacio");
         require(bytes(_dni).length != 0, "El DNI no puede ser vacio");
         require(doesAlumnoDNIExists(_dni), "Ya hay alguien con ese DNI");
@@ -137,7 +142,7 @@ contract AsignaturaFull {
         uint _fecha,
         uint _porcentaje,
         uint _nota_minima
-    ) public soloProfesor returns (uint) {
+    ) public soloCoordinador soloAbierta returns (uint) {
         require(
             bytes(_nombre).length != 0,
             "El nombre de la evaluacion no puede ser vacio"
@@ -162,7 +167,7 @@ contract AsignaturaFull {
         uint evaluacion,
         TipoNota tipo,
         uint calificacion
-    ) public soloProfesor estaCerrada {
+    ) public soloProfesor soloAbierta {
         require(
             estaMatriculado(alumno),
             "Solo se pueden calificar a un alumno matriculado."
@@ -195,7 +200,12 @@ contract AsignaturaFull {
 
     function notaFinal(
         address _address
-    ) public view returns (TipoNota tipo_nota, uint nota_final) {
+    )
+        public
+        view
+        soloCoordinador
+        returns (TipoNota tipo_nota, uint nota_final)
+    {
         bool isAllNP = true;
         bool isAnyNP = false;
         uint notasSum = 0;
@@ -208,7 +218,6 @@ contract AsignaturaFull {
             }
             if (calificaciones[_address][i].tipo != TipoNota.NP) {
                 isAllNP = false;
-                break;
             }
             if (calificaciones[_address][i].tipo == TipoNota.NP) {
                 isAnyNP = true;
@@ -236,6 +245,7 @@ contract AsignaturaFull {
     function miNotaFinal()
         public
         view
+        soloMatriculados
         returns (TipoNota tipo_nota, uint nota_final)
     {
         (tipo_nota, nota_final) = notaFinal(msg.sender);
@@ -247,14 +257,14 @@ contract AsignaturaFull {
         return bytes(_nombre).length != 0;
     }
 
-    function cerrar() external {
+    function cerrar() external soloCoordinador {
         cerrada = true;
     }
 
     function addProfesor(
         address profesor_address_,
         string memory name_
-    ) external {
+    ) external soloOwner soloAbierta {
         require(
             bytes(name_).length > 0,
             unicode"El nombre del profesor no puede estar vacío"
@@ -266,6 +276,16 @@ contract AsignaturaFull {
 
         datosProfesor[profesor_address_] = name_;
         profesores.push(profesor_address_);
+    }
+
+    modifier soloOwner() {
+        require(msg.sender == owner, "Solo permitido al propietario");
+        _;
+    }
+
+    modifier soloCoordinador() {
+        require(msg.sender == coordinador, "Solo permitido al coordinador");
+        _;
     }
 
     modifier soloProfesor() {
@@ -289,13 +309,15 @@ contract AsignaturaFull {
         _;
     }
 
-    modifier estaCerrada() {
+    modifier soloAbierta() {
         require(
             !cerrada,
-            unicode"La asignatura ya está cerrada, no se puede modificar"
+            unicode"Las asignatura está cerrada"
         );
         _;
     }
+
+    error DNI_Already_Exists(string dni);
 
     receive() external payable {
         revert("No se permite la recepcion de dinero.");
