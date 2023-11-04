@@ -11,6 +11,7 @@ contract AsignaturaFull {
         string nombre;
         uint fecha;
         uint porcentaje;
+        uint nota_minima;
     }
     enum TipoNota {
         Empty,
@@ -32,7 +33,6 @@ contract AsignaturaFull {
     address public coordinador;
     address[] public profesores;
     address[] public matriculas;
-    string[] public dnis;
 
     Evaluacion[] public evaluaciones;
     mapping(address => DatosAlumno) public datosAlumno;
@@ -57,7 +57,7 @@ contract AsignaturaFull {
 
     function setCoordinador(address coordinador_) external {
         require(
-            coordinador_ != address(0), // ? PREGUNTAR
+            coordinador_ != address(0),
             "tiene que haber un address correcto"
         );
         coordinador = coordinador_;
@@ -70,15 +70,47 @@ contract AsignaturaFull {
     ) public soloNoMatriculados estaCerrada {
         require(bytes(_nombre).length != 0, "El nombre no puede ser vacio");
         require(bytes(_dni).length != 0, "El DNI no puede ser vacio");
-        require(compareStrings(datosAlumno[msg.sender].dni, _dni), unicode"El DNI que estás metiendo ya está siendo utilizado");
+        require(doesAlumnoDNIExists(_dni), "Ya hay alguien con ese DNI");
 
         DatosAlumno memory datos = DatosAlumno(_nombre, _email, _dni);
         datosAlumno[msg.sender] = datos;
         matriculas.push(msg.sender);
     }
 
-    function compareStrings(string memory a, string memory b) public pure returns(bool) {
-        return (keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b)));
+    function doesAlumnoDNIExists(
+        string memory _dni
+    ) private view returns (bool) {
+        bool boolOut = false;
+        for (uint i = 0; i < matriculas.length; i++) {
+            if (compareStrings(datosAlumno[matriculas[i]].dni, _dni)) {
+                boolOut = true;
+                break;
+            }
+        }
+        return boolOut;
+    }
+
+    function matricular(
+        address _address,
+        string memory _nombre,
+        string memory _dni,
+        string memory _email
+    ) public {
+        require(bytes(_nombre).length != 0, "El nombre no puede ser vacio");
+        require(bytes(_dni).length != 0, "El DNI no puede ser vacio");
+        require(doesAlumnoDNIExists(_dni), "Ya hay alguien con ese DNI");
+
+        DatosAlumno memory datos = DatosAlumno(_nombre, _email, _dni);
+        datosAlumno[_address] = datos;
+        matriculas.push(_address);
+    }
+
+    function compareStrings(
+        string memory a,
+        string memory b
+    ) public pure returns (bool) {
+        return (keccak256(abi.encodePacked(a)) ==
+            keccak256(abi.encodePacked(b)));
     }
 
     function matriculasLength() public view returns (uint) {
@@ -103,13 +135,21 @@ contract AsignaturaFull {
     function creaEvaluacion(
         string memory _nombre,
         uint _fecha,
-        uint _porcentaje
+        uint _porcentaje,
+        uint _nota_minima
     ) public soloProfesor returns (uint) {
         require(
             bytes(_nombre).length != 0,
             "El nombre de la evaluacion no puede ser vacio"
         );
-        evaluaciones.push(Evaluacion(_nombre, _fecha, _porcentaje));
+        require(
+            _porcentaje > 100,
+            unicode"No puedes tener un porcentaje tan alto"
+        );
+
+        evaluaciones.push(
+            Evaluacion(_nombre, _fecha, _porcentaje, _nota_minima)
+        );
         return evaluaciones.length - 1;
     }
 
@@ -151,6 +191,54 @@ contract AsignaturaFull {
         Nota memory nota = calificaciones[msg.sender][evaluacion];
         tipo = nota.tipo;
         calificacion = nota.calificacion;
+    }
+
+    function notaFinal(
+        address _address
+    ) public view returns (TipoNota tipo_nota, uint nota_final) {
+        bool isAllNP = true;
+        bool isAnyNP = false;
+        uint notasSum = 0;
+        for (uint i = 0; i < evaluacionesLength(); i++) {
+            // empty case
+            if (calificaciones[_address][i].tipo == TipoNota.Empty) {
+                tipo_nota = TipoNota.Empty;
+                nota_final = 0;
+                break;
+            }
+            if (calificaciones[_address][i].tipo != TipoNota.NP) {
+                isAllNP = false;
+                break;
+            }
+            if (calificaciones[_address][i].tipo == TipoNota.NP) {
+                isAnyNP = true;
+            }
+
+            notasSum += calificaciones[_address][i].calificacion;
+        }
+
+        // case np
+        if (isAllNP) {
+            tipo_nota = TipoNota.NP;
+            nota_final = 0;
+        } else {
+            // case normal
+            tipo_nota = TipoNota.Normal;
+            nota_final = notasSum / evaluacionesLength();
+
+            // case any np
+            if (isAnyNP && nota_final > 499) {
+                nota_final = 499;
+            }
+        }
+    }
+
+    function miNotaFinal()
+        public
+        view
+        returns (TipoNota tipo_nota, uint nota_final)
+    {
+        (tipo_nota, nota_final) = notaFinal(msg.sender);
     }
 
     function estaMatriculado(address alumno) private view returns (bool) {
