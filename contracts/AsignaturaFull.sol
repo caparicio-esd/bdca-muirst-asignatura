@@ -188,7 +188,7 @@ contract AsignaturaFull {
             unicode"El nombre del profesor no puede estar vacío"
         );
         require(
-            bytes(datosProfesor[_profesor_address]).length > 0,
+            bytes(datosProfesor[_profesor_address]).length == 0,
             unicode"El profesor ya existe"
         );
 
@@ -229,7 +229,15 @@ contract AsignaturaFull {
         string memory _dni,
         string memory _email
     ) public soloNoMatriculados soloAbierta {
-        matricular(msg.sender, _nombre, _dni, _email);
+        require(bytes(_nombre).length != 0, "El nombre no puede ser vacio");
+        require(bytes(_dni).length != 0, "El DNI no puede ser vacio");
+        if (doesAlumnoDNIExists(_dni)) {
+            revert DNI_Already_Exists(_dni);
+        }
+
+        DatosAlumno memory datos = DatosAlumno(_nombre, _email, _dni);
+        datosAlumno[msg.sender] = datos;
+        matriculas.push(msg.sender);
     }
 
     /**
@@ -251,7 +259,7 @@ contract AsignaturaFull {
     ) public soloOwner soloAbierta {
         require(bytes(_nombre).length != 0, "El nombre no puede ser vacio");
         require(bytes(_dni).length != 0, "El DNI no puede ser vacio");
-        require(doesAlumnoDNIExists(_dni), "Ya hay alguien con ese DNI");
+        require(!doesAlumnoDNIExists(_dni), "Ya hay alguien con ese DNI");
 
         DatosAlumno memory datos = DatosAlumno(_nombre, _email, _dni);
         datosAlumno[_address] = datos;
@@ -320,7 +328,7 @@ contract AsignaturaFull {
             unicode"El nombre de la evaluacion no puede ser vacio"
         );
         require(
-            _porcentaje > 100,
+            _porcentaje < 100,
             unicode"No puedes tener un porcentaje tan alto"
         );
 
@@ -428,40 +436,7 @@ contract AsignaturaFull {
         soloCoordinador
         returns (TipoNota tipo_nota, uint nota_final)
     {
-        bool isAllNP = true;
-        bool isAnyNP = false;
-        uint notasSum = 0;
-        for (uint i = 0; i < evaluacionesLength(); i++) {
-            // empty case
-            if (calificaciones[_address][i].tipo == TipoNota.Empty) {
-                tipo_nota = TipoNota.Empty;
-                nota_final = 0;
-                break;
-            }
-            if (calificaciones[_address][i].tipo != TipoNota.NP) {
-                isAllNP = false;
-            }
-            if (calificaciones[_address][i].tipo == TipoNota.NP) {
-                isAnyNP = true;
-            }
-
-            notasSum += calificaciones[_address][i].calificacion;
-        }
-
-        // case np
-        if (isAllNP) {
-            tipo_nota = TipoNota.NP;
-            nota_final = 0;
-        } else {
-            // case normal
-            tipo_nota = TipoNota.Normal;
-            nota_final = notasSum / evaluacionesLength();
-
-            // case any np
-            if (isAnyNP && nota_final > 499) {
-                nota_final = 499;
-            }
-        }
+        (tipo_nota, nota_final) = computeNotaFinal(_address);
     }
 
     /**
@@ -480,7 +455,60 @@ contract AsignaturaFull {
         soloMatriculados
         returns (TipoNota tipo_nota, uint nota_final)
     {
-        (tipo_nota, nota_final) = notaFinal(msg.sender);
+        (tipo_nota, nota_final) = computeNotaFinal(msg.sender);
+    }
+
+    /**
+     *
+     * miNotaFinal
+     * @dev se calcula la nota final de un alumno sabiendo su dirección
+     *
+     * @param _address   {address}
+     *
+     * @return tipo_nota         {TipoNota}
+     * @return nota_final {uint}
+     *
+     */
+    function computeNotaFinal(
+        address _address
+    ) private view returns (TipoNota tipo_nota, uint nota_final) {
+        bool isAllNP = true;
+        bool isAnyNP = false;
+        uint notasPondSum = 0;
+        uint totalPond = 0;
+        for (uint i = 0; i < evaluacionesLength(); i++) {
+            // empty case
+            if (calificaciones[_address][i].tipo == TipoNota.Empty) {
+                tipo_nota = TipoNota.Empty;
+                nota_final = 0;
+                break;
+            }
+            if (calificaciones[_address][i].tipo != TipoNota.NP) {
+                isAllNP = false;
+            }
+            if (calificaciones[_address][i].tipo == TipoNota.NP) {
+                isAnyNP = true;
+            }
+            totalPond += evaluaciones[i].porcentaje;
+            notasPondSum +=
+                calificaciones[_address][i].calificacion *
+                evaluaciones[i].porcentaje;
+        }
+
+        // case np
+        if (isAllNP) {
+            tipo_nota = TipoNota.NP;
+            nota_final = 0;
+        } else {
+            // case normal
+            tipo_nota = TipoNota.Normal;
+            nota_final = notasPondSum / totalPond;
+
+            // case any np
+            if (isAnyNP && nota_final > 499) {
+                nota_final = 499;
+            }
+        }
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
